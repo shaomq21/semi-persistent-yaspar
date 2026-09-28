@@ -124,14 +124,20 @@ exhaustion, UBig and open endpoints.
 `Bottom | False | True | Top`. Comparisons and backward narrowing are piece B;
 the split is [bool4-split.md](bool4-split.md).
 
-Proved, with no `admit()`/`assume()`: containment of `join`, `meet`, `not`,
-`and`, and `or`; the §3.5 laws of `meet` and `join`; monotonicity of `not`,
-`and`, and `or`.
+Canonical `bottom`, `top`, and `constant` constructors state their exact
+concretizations. The module contains no `admit()`/`assume()`: `join`, `meet`,
+`not`, `and`, and `or` have containment contracts; `meet` and `join` have the
+§3.5 lattice laws; and `not`, `and`, and `or` are monotone.
+
+Verification command:
 
 ```text
-cargo verus verify -p semi-persistent-abstract-domains -- --verify-only-module bool4 --rlimit 50
-21 verified, 0 errors
+cargo verus verify --fwd-verus-args-to roots -p semi-persistent-abstract-domains -- --verify-only-module bool4 --rlimit 50
+24 verified, 0 errors
 ```
 
-`cargo test -p semi-persistent-abstract-domains --test bool4` (3 tests) enumerates
-the lattice laws and the concrete boolean operations.
+The executable Bool4 suite contains 4 tests:
+
+```text
+cargo test -p semi-persistent-abstract-domains --test bool4
+```

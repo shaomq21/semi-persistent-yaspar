@@ -25,6 +25,33 @@ pub enum Bool4 {
 }
 
 impl Bool4 {
+    #[inline]
+    pub fn bottom() -> (r: Bool4)
+        ensures
+            r == Bool4::Bottom,
+            forall|b: bool| #![auto] !r.has(b),
+    {
+        Bool4::Bottom
+    }
+
+    #[inline]
+    pub fn top() -> (r: Bool4)
+        ensures
+            r == Bool4::Top,
+            forall|b: bool| #![auto] r.has(b),
+    {
+        Bool4::Top
+    }
+
+    #[inline]
+    pub fn constant(value: bool) -> (r: Bool4)
+        ensures
+            r == if value { Bool4::True } else { Bool4::False },
+            forall|b: bool| #![auto] r.has(b) <==> b == value,
+    {
+        if value { Bool4::True } else { Bool4::False }
+    }
+
     pub open spec fn has(self, b: bool) -> bool {
         match self {
             Bool4::Bottom => false,

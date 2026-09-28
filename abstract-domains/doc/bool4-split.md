@@ -4,7 +4,7 @@ Task 1's four-point boolean, from `interval-extensions.md` §2. Two people, two 
 
 ## Piece A — the domain
 
-Owner: this change. Files: `src/bool4.rs`, `tests/bool4.rs`.
+Owner: implementation owner. Files: `src/bool4.rs`, `tests/bool4.rs`.
 
 `Bool4 = Bottom | False | True | Top`.
 
@@ -17,6 +17,7 @@ Owner: this change. Files: `src/bool4.rs`, `tests/bool4.rs`.
 
 Implement and prove:
 
+- canonical `bottom`, `top`, and concrete-boolean `constant` constructors
 - `has`, and `refines` as subset of `has`
 - `join`, `meet`, `not`, `and`, `or`, each with containment: every concrete input's concrete result is in the abstract result
 - §3.5 for `meet` and `join`: idempotent, commutative, associative, units, zeros
@@ -26,7 +27,7 @@ Implement and prove:
 
 ## Piece B — comparisons and backward narrowing
 
-Owner: the other person. Do not start by editing `bool4.rs`.
+Owner: proof/test owner. Build on the Piece A API; do not start by editing `bool4.rs`.
 
 Forward comparisons, result type `Bool4`:
 

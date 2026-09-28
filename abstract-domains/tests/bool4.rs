@@ -9,6 +9,23 @@ fn all() -> [Bool4; 4] {
 }
 
 #[test]
+fn canonical_constructors_have_expected_values() {
+    assert_eq!(Bool4::bottom(), Bool4::Bottom);
+    assert_eq!(Bool4::top(), Bool4::Top);
+    assert_eq!(Bool4::constant(false), Bool4::False);
+    assert_eq!(Bool4::constant(true), Bool4::True);
+
+    assert!(!Bool4::bottom().contains(false));
+    assert!(!Bool4::bottom().contains(true));
+    assert!(Bool4::top().contains(false));
+    assert!(Bool4::top().contains(true));
+    assert!(Bool4::constant(false).contains(false));
+    assert!(!Bool4::constant(false).contains(true));
+    assert!(Bool4::constant(true).contains(true));
+    assert!(!Bool4::constant(true).contains(false));
+}
+
+#[test]
 fn meet_of_unknown_and_true_is_true() {
     assert_eq!(Bool4::Top.meet(Bool4::True), Bool4::True);
     assert_eq!(Bool4::True.meet(Bool4::False), Bool4::Bottom);
