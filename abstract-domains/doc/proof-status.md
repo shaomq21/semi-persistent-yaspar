@@ -1,15 +1,15 @@
 # Abstract Domains Proof Status
 
-Last refreshed: 2026-09-23.
+Last refreshed: 2026-10-01.
 
 ## Current result
 
-The historical crate-wide figure below is the L1–L4 machine domains and does
-**not** include IntervalZ or Bool4. Those are reported in their own sections.
+The crate-wide gate includes the enabled L1–L4 machine domains, IntervalZ,
+Bool4, and the multi-width forward comparisons.
 
 ```text
 cargo verus verify
-994 verified, 0 errors
+1269 verified, 0 errors
 ```
 
 The project source contains no executable `admit()` or `assume()` calls. CI
@@ -118,16 +118,22 @@ cargo verus verify -p semi-persistent-abstract-domains -- --verify-only-module i
 covers the executable transfers, the `[-8,-1]/[-4,-2]` quotients, fuel
 exhaustion, UBig and open endpoints.
 
-## Bool4 (Task 1 §2, piece A)
+## Bool4 and forward comparisons (Task 1 §2)
 
 `abstract-domains/src/bool4.rs` is the four-point boolean
-`Bottom | False | True | Top`. Comparisons and backward narrowing are piece B;
-the split is [bool4-split.md](bool4-split.md).
+`Bottom | False | True | Top`. The ownership and implementation split is
+[bool4-split.md](bool4-split.md).
 
 Canonical `bottom`, `top`, and `constant` constructors state their exact
 concretizations. The module contains no `admit()`/`assume()`: `join`, `meet`,
 `not`, `and`, and `or` have containment contracts; `meet` and `join` have the
 §3.5 lattice laws; and `not`, `and`, and `or` are monotone.
+
+The multi-width `ReducedProduct` implements sound forward `eq`, `ne`, and
+unsigned `ult` comparisons. Equality uses interval disjointness, equal
+singletons, and conflicting known Tnum bits; `ult` uses interval endpoints.
+Their refinement lemmas prove monotonicity for nonempty `eq`/`ne` inputs and
+for all well-formed `ult` inputs. Backward narrowing remains deferred.
 
 Verification command:
 
@@ -140,4 +146,11 @@ The executable Bool4 suite contains 4 tests:
 
 ```text
 cargo test -p semi-persistent-abstract-domains --test bool4
+```
+
+The forward-comparison suite contains 6 tests, including exhaustive interval
+and Tnum oracles over the embedded four-bit range:
+
+```text
+cargo test -p semi-persistent-abstract-domains --test bool4_comparisons
 ```

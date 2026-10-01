@@ -19,6 +19,7 @@ macro_rules! abstract_domain {
     ($mod_name:ident, $uint:ty, $bits:expr, $max_val:expr) => {
         pub mod $mod_name {
             use vstd::prelude::*;
+            use crate::bool4::Bool4;
             use crate::bools::Bit;
             use crate::nats::*;
             use crate::tnum::Tnum;
@@ -278,6 +279,36 @@ macro_rules! abstract_domain {
                 pub open spec fn wf(self) -> bool { self.val & self.mask == 0 }
                 pub open spec fn to_tn(self) -> Tnum { Tnum { val: self.val as nat, mask: self.mask as nat } }
                 pub open spec fn has(self, x: $uint) -> bool { self.to_tn().has(x as nat) }
+                pub open spec fn comparison_refines(self, other: ExecTnum) -> bool {
+                    self.mask & !other.mask == 0
+                        && (self.val ^ other.val) & !other.mask == 0
+                }
+                pub open spec fn known_conflict_spec(self, other: ExecTnum) -> bool {
+                    (self.val ^ other.val) & !(self.mask | other.mask) != 0
+                }
+                proof fn conflict_values_differ(self, t: ExecTnum, x: $uint, y: $uint)
+                    requires
+                        self.wf(),
+                        t.wf(),
+                        self.known_conflict_spec(t),
+                        self.has(x),
+                        t.has(y),
+                    ensures x != y
+                {
+                    self.to_tn().has_equiv(x as nat);
+                    t.to_tn().has_equiv(y as nat);
+                    native_and_not(x, self.mask);
+                    native_and_not(y, t.mask);
+                    let sv = self.val;
+                    let sm = self.mask;
+                    let tv = t.val;
+                    let tm = t.mask;
+                    assert(x != y) by(bit_vector)
+                        requires
+                            (x & !sm) == sv,
+                            (y & !tm) == tv,
+                            ((sv ^ tv) & !(sm | tm)) != (0 as $uint);
+                }
                 proof fn wf_inv(self) requires self.wf() ensures self.to_tn().inv()
                 {
                     native_and(self.val, self.mask);
@@ -552,6 +583,56 @@ macro_rules! abstract_domain {
                 }
                 #[inline] pub fn min_val(&self) -> (r: $uint) ensures r == self.val { self.val }
                 #[inline] pub fn max_val(&self) -> (r: $uint) ensures r == (self.val | self.mask) { self.val | self.mask }
+                #[inline] fn known_conflict(&self, t: &ExecTnum) -> (r: bool)
+                    requires self.wf(), t.wf()
+                    ensures
+                        r == self.known_conflict_spec(*t),
+                        r ==> forall|x: $uint, y: $uint| #![auto] self.has(x) && t.has(y) ==> x != y
+                {
+                    let conflict = (self.val ^ t.val) & !(self.mask | t.mask);
+                    if conflict != 0 {
+                        proof {
+                            assert forall|x: $uint, y: $uint| #![auto]
+                                self.has(x) && t.has(y) implies x != y by {
+                                self.conflict_values_differ(*t, x, y);
+                            };
+                        }
+                        true
+                    } else {
+                        false
+                    }
+                }
+                proof fn wider_conflict_is_preserved(
+                    self,
+                    t: ExecTnum,
+                    wider_self: ExecTnum,
+                    wider_t: ExecTnum,
+                )
+                    requires
+                        self.wf(), t.wf(), wider_self.wf(), wider_t.wf(),
+                        self.comparison_refines(wider_self),
+                        t.comparison_refines(wider_t),
+                        wider_self.known_conflict_spec(wider_t),
+                    ensures self.known_conflict_spec(t)
+                {
+                    let sv = self.val;
+                    let sm = self.mask;
+                    let tv = t.val;
+                    let tm = t.mask;
+                    let wsv = wider_self.val;
+                    let wsm = wider_self.mask;
+                    let wtv = wider_t.val;
+                    let wtm = wider_t.mask;
+                    assert(
+                        ((sv ^ tv) & !(sm | tm)) != (0 as $uint)
+                    ) by(bit_vector)
+                        requires
+                            (sm & !wsm) == (0 as $uint),
+                            ((sv ^ wsv) & !wsm) == (0 as $uint),
+                            (tm & !wtm) == (0 as $uint),
+                            ((tv ^ wtv) & !wtm) == (0 as $uint),
+                            ((wsv ^ wtv) & !(wsm | wtm)) != (0 as $uint);
+                }
                 proof fn has_bounds(&self, c: $uint)
                     requires self.wf(), self.has(c)
                     ensures c >= self.val, c <= (self.val | self.mask)
@@ -1295,6 +1376,40 @@ macro_rules! abstract_domain {
                 pub open spec fn has(self, x: $uint) -> bool {
                     self.tnum.has(x) && self.anum.has(x) && self.interval.has(x) && self.unum.has(x)
                 }
+                pub open spec fn comparison_refines(self, other: ReducedProduct) -> bool {
+                    other.interval.lo <= self.interval.lo
+                        && self.interval.hi <= other.interval.hi
+                        && self.tnum.comparison_refines(other.tnum)
+                }
+                pub open spec fn nonempty(self) -> bool {
+                    exists|x: $uint| self.has(x)
+                }
+                pub open spec fn eq_spec(self, t: ReducedProduct) -> Bool4 {
+                    if self.interval.hi < t.interval.lo || t.interval.hi < self.interval.lo
+                        || self.tnum.known_conflict_spec(t.tnum)
+                    {
+                        Bool4::False
+                    } else if self.interval.lo == self.interval.hi
+                        && t.interval.lo == t.interval.hi
+                        && self.interval.lo == t.interval.lo
+                    {
+                        Bool4::True
+                    } else {
+                        Bool4::Top
+                    }
+                }
+                pub open spec fn ne_spec(self, t: ReducedProduct) -> Bool4 {
+                    self.eq_spec(t).not_spec()
+                }
+                pub open spec fn ult_spec(self, t: ReducedProduct) -> Bool4 {
+                    if self.interval.hi < t.interval.lo {
+                        Bool4::True
+                    } else if self.interval.lo >= t.interval.hi {
+                        Bool4::False
+                    } else {
+                        Bool4::Top
+                    }
+                }
                 pub open spec fn top_spec() -> ReducedProduct {
                     ReducedProduct { tnum: ExecTnum { val: 0, mask: !(0 as $uint) },
                         anum: ExecAnum { base: 0, span: !(0 as $uint) },
@@ -1502,6 +1617,170 @@ macro_rules! abstract_domain {
                 }
                 #[inline] pub fn neg(&self) -> (r: ReducedProduct) requires self.wf() ensures r.wf() {
                     ReducedProduct { tnum: self.tnum.neg(), anum: ExecAnum::top(), interval: Interval::top(), unum: self.unum.neg() }.reduce()
+                }
+                pub fn eq(&self, t: &ReducedProduct) -> (r: Bool4)
+                    requires self.wf(), t.wf()
+                    ensures
+                        r == self.eq_spec(*t),
+                        forall|x: $uint, y: $uint| #![auto]
+                            self.has(x) && t.has(y) ==> r.has(x == y)
+                {
+                    if self.interval.hi < t.interval.lo || t.interval.hi < self.interval.lo {
+                        proof {
+                            assert forall|x: $uint, y: $uint| #![auto]
+                                self.has(x) && t.has(y) implies x != y by {
+                                assert(self.interval.has(x));
+                                assert(t.interval.has(y));
+                            };
+                        }
+                        Bool4::constant(false)
+                    } else if self.tnum.known_conflict(&t.tnum) {
+                        proof {
+                            assert forall|x: $uint, y: $uint| #![auto]
+                                self.has(x) && t.has(y) implies x != y by {
+                                assert(self.tnum.has(x));
+                                assert(t.tnum.has(y));
+                            };
+                        }
+                        Bool4::constant(false)
+                    } else if self.interval.lo == self.interval.hi
+                        && t.interval.lo == t.interval.hi
+                        && self.interval.lo == t.interval.lo
+                    {
+                        proof {
+                            assert forall|x: $uint, y: $uint| #![auto]
+                                self.has(x) && t.has(y) implies x == y by {
+                                assert(self.interval.has(x));
+                                assert(t.interval.has(y));
+                            };
+                        }
+                        Bool4::constant(true)
+                    } else {
+                        Bool4::top()
+                    }
+                }
+                pub fn ne(&self, t: &ReducedProduct) -> (r: Bool4)
+                    requires self.wf(), t.wf()
+                    ensures
+                        r == self.ne_spec(*t),
+                        forall|x: $uint, y: $uint| #![auto]
+                            self.has(x) && t.has(y) ==> r.has(x != y)
+                {
+                    let equal = self.eq(t);
+                    let r = equal.not();
+                    proof {
+                        assert forall|x: $uint, y: $uint| #![auto]
+                            self.has(x) && t.has(y) implies r.has(x != y) by {
+                            assert(equal.has(x == y));
+                            assert((x != y) == !(x == y));
+                        };
+                    }
+                    r
+                }
+                pub fn ult(&self, t: &ReducedProduct) -> (r: Bool4)
+                    requires self.wf(), t.wf()
+                    ensures
+                        r == self.ult_spec(*t),
+                        forall|x: $uint, y: $uint| #![auto]
+                            self.has(x) && t.has(y) ==> r.has(x < y)
+                {
+                    if self.interval.hi < t.interval.lo {
+                        proof {
+                            assert forall|x: $uint, y: $uint| #![auto]
+                                self.has(x) && t.has(y) implies x < y by {
+                                assert(self.interval.has(x));
+                                assert(t.interval.has(y));
+                            };
+                        }
+                        Bool4::constant(true)
+                    } else if self.interval.lo >= t.interval.hi {
+                        proof {
+                            assert forall|x: $uint, y: $uint| #![auto]
+                                self.has(x) && t.has(y) implies !(x < y) by {
+                                assert(self.interval.has(x));
+                                assert(t.interval.has(y));
+                            };
+                        }
+                        Bool4::constant(false)
+                    } else {
+                        Bool4::top()
+                    }
+                }
+                pub proof fn eq_monotone(
+                    self,
+                    t: ReducedProduct,
+                    wider_self: ReducedProduct,
+                    wider_t: ReducedProduct,
+                )
+                    requires
+                        self.wf(), t.wf(), wider_self.wf(), wider_t.wf(),
+                        self.comparison_refines(wider_self),
+                        t.comparison_refines(wider_t),
+                        self.nonempty(),
+                        t.nonempty(),
+                    ensures self.eq_spec(t).refines(wider_self.eq_spec(wider_t))
+                {
+                    if wider_self.tnum.known_conflict_spec(wider_t.tnum) {
+                        self.tnum.wider_conflict_is_preserved(
+                            t.tnum,
+                            wider_self.tnum,
+                            wider_t.tnum,
+                        );
+                    }
+                    let x = choose|x: $uint| self.has(x);
+                    let y = choose|y: $uint| t.has(y);
+                    assert(self.interval.has(x));
+                    assert(t.interval.has(y));
+                    assert(self.tnum.has(x));
+                    assert(t.tnum.has(y));
+                    if self.eq_spec(t) == Bool4::False
+                        && wider_self.eq_spec(wider_t) == Bool4::True
+                    {
+                        assert(wider_self.interval.lo == wider_self.interval.hi);
+                        assert(wider_t.interval.lo == wider_t.interval.hi);
+                        assert(wider_self.interval.lo == wider_t.interval.lo);
+                        assert(x == y);
+                        assert(self.tnum.known_conflict_spec(t.tnum));
+                        self.tnum.conflict_values_differ(t.tnum, x, y);
+                    }
+                }
+                pub proof fn ne_monotone(
+                    self,
+                    t: ReducedProduct,
+                    wider_self: ReducedProduct,
+                    wider_t: ReducedProduct,
+                )
+                    requires
+                        self.wf(), t.wf(), wider_self.wf(), wider_t.wf(),
+                        self.comparison_refines(wider_self),
+                        t.comparison_refines(wider_t),
+                        self.nonempty(),
+                        t.nonempty(),
+                    ensures self.ne_spec(t).refines(wider_self.ne_spec(wider_t))
+                {
+                    self.eq_monotone(t, wider_self, wider_t);
+                    crate::bool4::not_monotone(self.eq_spec(t), wider_self.eq_spec(wider_t));
+                }
+                pub proof fn ult_monotone(
+                    self,
+                    t: ReducedProduct,
+                    wider_self: ReducedProduct,
+                    wider_t: ReducedProduct,
+                )
+                    requires
+                        self.wf(), t.wf(), wider_self.wf(), wider_t.wf(),
+                        self.comparison_refines(wider_self),
+                        t.comparison_refines(wider_t),
+                    ensures self.ult_spec(t).refines(wider_self.ult_spec(wider_t))
+                {
+                    if self.interval.hi < t.interval.lo {
+                        assert(!(wider_self.interval.lo >= wider_t.interval.hi));
+                    } else if self.interval.lo >= t.interval.hi {
+                        assert(!(wider_self.interval.hi < wider_t.interval.lo));
+                    } else {
+                        assert(!(wider_self.interval.hi < wider_t.interval.lo));
+                        assert(!(wider_self.interval.lo >= wider_t.interval.hi));
+                    }
                 }
                 #[inline] pub fn is_const(&self) -> bool { self.tnum.is_const() && self.interval.lo == self.interval.hi }
                 #[inline] pub fn min_val(&self) -> $uint {

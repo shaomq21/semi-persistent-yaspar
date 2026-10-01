@@ -34,6 +34,14 @@ Forward comparisons, result type `Bool4`:
 - `eq` / `ne` from interval disjointness and singleton equality, plus conflicting known Tnum bits as a proof of inequality
 - unsigned `<`, `<=`, `>`, `>=` from interval endpoints
 
+Implemented in the multi-width `ReducedProduct`: `eq`, `ne`, and unsigned
+`ult` (`<`). Their contracts contain every concrete comparison result for
+represented inputs, and their comparison-specific refinement lemmas prove
+monotonicity for nonempty `eq`/`ne` inputs and for all well-formed `ult`
+inputs. The `d8` executable tests exhaust all interval pairs and all 81 Tnum
+states over the embedded four-bit range, and cover zero and the machine
+maximum.
+
 Backward narrowing for a taken branch. For a true unsigned `x < y`, narrow with checked forms of `x.hi <= y.hi - 1` and `y.lo >= x.lo + 1`. An infeasible branch is `Bottom` or `None`, not an ordinary well-formed interval. Run the reduced-product reduction after the narrow.
 
 Prove the acceptance criteria in §2: every concrete comparison of represented inputs is in the `Bool4` result; a backward step keeps every concrete pair that satisfies the branch and drops only pairs that violate it; zero and the machine maximum do not underflow or overflow; small-width tests enumerate forward and backward results against concrete values.
