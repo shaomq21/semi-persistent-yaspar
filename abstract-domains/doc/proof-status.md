@@ -135,11 +135,20 @@ singletons, and conflicting known Tnum bits; `ult` uses interval endpoints.
 Their refinement lemmas prove monotonicity for nonempty `eq`/`ne` inputs and
 for all well-formed `ult` inputs. Backward narrowing remains deferred.
 
-Verification command:
+Verification command for the Bool4 lattice:
 
 ```text
 cargo verus verify --fwd-verus-args-to roots -p semi-persistent-abstract-domains -- --verify-only-module bool4 --rlimit 50
 24 verified, 0 errors
+```
+
+The comparisons and their refinement lemmas live in the width instances of
+`domains`, so they need their own run. This also verifies the rest of each
+width's domains:
+
+```text
+cargo verus verify --fwd-verus-args-to roots -p semi-persistent-abstract-domains -- --verify-only-module domains::d8 --verify-only-module domains::d16 --verify-only-module domains::d32 --verify-only-module domains::d64 --rlimit 50
+716 verified, 0 errors
 ```
 
 The executable Bool4 suite contains 6 tests, including exact truth tables
@@ -151,7 +160,11 @@ cargo test -p semi-persistent-abstract-domains --test bool4
 ```
 
 The forward-comparison suite contains 6 tests, including exhaustive interval
-and Tnum oracles over the embedded four-bit range:
+and Tnum oracles over the embedded four-bit range. On intervals, `eq`, `ne`,
+and `ult` return exactly the abstraction of the concrete results. On Tnums,
+unreduced inputs get sound results, and reduced inputs get exact ones: two
+equal constant Tnums with the interval `[0, 15]` give `Top` until `reduce`
+tightens the interval to a singleton.
 
 ```text
 cargo test -p semi-persistent-abstract-domains --test bool4_comparisons

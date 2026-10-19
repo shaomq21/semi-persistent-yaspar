@@ -48,6 +48,16 @@ fn tnum_contains(tnum: ExecTnum, value: u8) -> bool {
     value & !tnum.mask == tnum.val
 }
 
+/// The abstraction of the concrete comparison results seen: hit[0] for false, hit[1] for true.
+fn alpha(hit: [bool; 2]) -> Bool4 {
+    match hit {
+        [false, false] => Bool4::Bottom,
+        [true, false] => Bool4::False,
+        [false, true] => Bool4::True,
+        [true, true] => Bool4::Top,
+    }
+}
+
 fn assert_refines(narrower: Bool4, wider: Bool4) {
     for value in [false, true] {
         assert!(!narrower.contains(value) || wider.contains(value));
@@ -100,29 +110,36 @@ fn unsigned_less_than_uses_interval_endpoints() {
 }
 
 #[test]
-fn four_bit_interval_results_contain_every_concrete_comparison() {
+fn four_bit_interval_results_are_the_exact_comparisons() {
     for xlo in 0u8..=15 {
         for xhi in xlo..=15 {
             let x = interval(xlo, xhi);
             for ylo in 0u8..=15 {
                 for yhi in ylo..=15 {
                     let y = interval(ylo, yhi);
-                    let eq = x.eq(&y);
-                    let ne = x.ne(&y);
-                    let ult = x.ult(&y);
+                    let mut eq = [false; 2];
+                    let mut ne = [false; 2];
+                    let mut ult = [false; 2];
                     for xv in xlo..=xhi {
                         for yv in ylo..=yhi {
-                            assert!(eq.contains(xv == yv));
-                            assert!(ne.contains(xv != yv));
-                            assert!(ult.contains(xv < yv));
+                            eq[(xv == yv) as usize] = true;
+                            ne[(xv != yv) as usize] = true;
+                            ult[(xv < yv) as usize] = true;
                         }
                     }
+                    let case = format!("[{xlo}, {xhi}] vs [{ylo}, {yhi}]");
+                    assert_eq!(x.eq(&y), alpha(eq), "eq {case}");
+                    assert_eq!(x.ne(&y), alpha(ne), "ne {case}");
+                    assert_eq!(x.ult(&y), alpha(ult), "ult {case}");
                 }
             }
         }
     }
 }
 
+/// Unreduced inputs only need sound results: equal constant Tnums still carry
+/// the interval [0, 15], so `eq` cannot see the singleton and returns `Top`.
+/// After `reduce`, the interval is tightened and the results are exact.
 #[test]
 fn four_bit_tnum_results_match_the_concrete_oracle() {
     let tnums = four_bit_tnums();
@@ -130,8 +147,8 @@ fn four_bit_tnum_results_match_the_concrete_oracle() {
         let left = with_tnum(*left_tnum);
         for right_tnum in &tnums {
             let right = with_tnum(*right_tnum);
-            let eq = left.eq(&right);
-            let ne = left.ne(&right);
+            let mut eq = [false; 2];
+            let mut ne = [false; 2];
             for left_value in 0u8..=15 {
                 if !tnum_contains(*left_tnum, left_value) {
                     continue;
@@ -140,10 +157,19 @@ fn four_bit_tnum_results_match_the_concrete_oracle() {
                     if !tnum_contains(*right_tnum, right_value) {
                         continue;
                     }
-                    assert!(eq.contains(left_value == right_value));
-                    assert!(ne.contains(left_value != right_value));
+                    eq[(left_value == right_value) as usize] = true;
+                    ne[(left_value != right_value) as usize] = true;
                 }
             }
+            let case = format!(
+                "tnum(val={:#06b}, mask={:#06b}) vs tnum(val={:#06b}, mask={:#06b})",
+                left_tnum.val, left_tnum.mask, right_tnum.val, right_tnum.mask
+            );
+            assert_refines(alpha(eq), left.eq(&right));
+            assert_refines(alpha(ne), left.ne(&right));
+            let (left, right) = (left.reduce(), right.reduce());
+            assert_eq!(left.eq(&right), alpha(eq), "reduced eq {case}");
+            assert_eq!(left.ne(&right), alpha(ne), "reduced ne {case}");
         }
     }
 }
