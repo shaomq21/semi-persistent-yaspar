@@ -80,3 +80,87 @@ fn boolean_ops_contain_every_concrete_result() {
     assert!(!Bool4::Bottom.contains(false));
     assert!(!Bool4::Bottom.contains(true));
 }
+
+// Rows and columns follow `all()`: Bottom, False, True, Top.
+const B: Bool4 = Bool4::Bottom;
+const F: Bool4 = Bool4::False;
+const T: Bool4 = Bool4::True;
+const U: Bool4 = Bool4::Top;
+
+fn check_table(name: &str, op: fn(Bool4, Bool4) -> Bool4, table: [[Bool4; 4]; 4]) {
+    for (i, a) in all().into_iter().enumerate() {
+        for (j, b) in all().into_iter().enumerate() {
+            assert_eq!(op(a, b), table[i][j], "{name}({a:?}, {b:?})");
+        }
+    }
+}
+
+#[test]
+fn operations_match_exact_truth_tables() {
+    assert_eq!(all().map(Bool4::not), [B, T, F, U]);
+
+    check_table("and", Bool4::and, [
+        [B, B, B, B],
+        [B, F, F, F],
+        [B, F, T, U],
+        [B, F, U, U],
+    ]);
+    check_table("or", Bool4::or, [
+        [B, B, B, B],
+        [B, F, T, U],
+        [B, T, T, T],
+        [B, U, T, U],
+    ]);
+    check_table("join", Bool4::join, [
+        [B, F, T, U],
+        [F, F, U, U],
+        [T, U, T, U],
+        [U, U, U, U],
+    ]);
+    check_table("meet", Bool4::meet, [
+        [B, B, B, B],
+        [B, F, B, F],
+        [B, B, T, T],
+        [B, F, T, U],
+    ]);
+}
+
+/// The abstraction of a set of concrete booleans.
+fn alpha(has_false: bool, has_true: bool) -> Bool4 {
+    match (has_false, has_true) {
+        (false, false) => B,
+        (true, false) => F,
+        (false, true) => T,
+        (true, true) => U,
+    }
+}
+
+#[test]
+fn not_and_or_are_the_best_abstractions() {
+    let bits = [false, true];
+    for a in all() {
+        // not_hit[r]: some concrete x in a has !x == r.
+        let mut not_hit = [false; 2];
+        for x in bits {
+            if a.contains(x) {
+                not_hit[!x as usize] = true;
+            }
+        }
+        assert_eq!(a.not(), alpha(not_hit[0], not_hit[1]), "not({a:?})");
+
+        for b in all() {
+            let mut and_hit = [false; 2];
+            let mut or_hit = [false; 2];
+            for x in bits {
+                for y in bits {
+                    if a.contains(x) && b.contains(y) {
+                        and_hit[(x && y) as usize] = true;
+                        or_hit[(x || y) as usize] = true;
+                    }
+                }
+            }
+            assert_eq!(a.and(b), alpha(and_hit[0], and_hit[1]), "and({a:?}, {b:?})");
+            assert_eq!(a.or(b), alpha(or_hit[0], or_hit[1]), "or({a:?}, {b:?})");
+        }
+    }
+}

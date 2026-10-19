@@ -142,7 +142,9 @@ cargo verus verify --fwd-verus-args-to roots -p semi-persistent-abstract-domains
 24 verified, 0 errors
 ```
 
-The executable Bool4 suite contains 4 tests:
+The executable Bool4 suite contains 6 tests, including exact truth tables
+for `not`, `and`, `or`, `join`, and `meet`, and a check that `not`, `and`, and
+`or` return the best abstraction of their concrete results:
 
 ```text
 cargo test -p semi-persistent-abstract-domains --test bool4
